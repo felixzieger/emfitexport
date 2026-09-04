@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -85,6 +86,14 @@ class Exporter:
         # todo use some direct way to check?
         datapoints = js['sleep_epoch_datapoints']
         if datapoints is None:
+            # Sessions past this age are final server-side and will never gain
+            # datapoints; save them as-is instead of failing every export run.
+            time_end = js.get('time_end') or 0
+            if time_end < time.time() - 2 * 86400:
+                logger.warning(
+                    f'Sleep session {sid} has no datapoints and is older than 2 days; saving as-is.'
+                )
+                return js
             logger.warning(
                 f'Sleep session {sid} has no datapoints, likely incomplete sleep. Running the export later should resolve this.'
             )
