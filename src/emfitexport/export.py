@@ -29,6 +29,10 @@ class RetryMe(Exception):
     pass
 
 
+class IncompleteSleep(Exception):
+    """Session is still being processed server-side; a later run will pick it up."""
+
+
 retryme = retry(
     retry=retry_if_exception_type(RetryMe),
     wait=wait_exponential(max=10),
@@ -94,10 +98,8 @@ class Exporter:
                     f'Sleep session {sid} has no datapoints and is older than 2 days; saving as-is.'
                 )
                 return js
-            logger.warning(
-                f'Sleep session {sid} has no datapoints, likely incomplete sleep. Running the export later should resolve this.'
-            )
-            raise RetryMe
+            # Not retried: datapoints take hours to appear, not seconds.
+            raise IncompleteSleep(sid)
 
         return js
 
@@ -121,6 +123,10 @@ class Exporter:
 
             try:
                 js = self.fetch_sleep(device_id, sleep_id=sid)
+            except IncompleteSleep:
+                # Expected for recent sessions, so it must not fail the export.
+                logger.warning('sleep %s has no datapoints yet, will retry on the next run', sid)
+                continue
             except Exception as e:
                 logger.error('error while fetching sleep %s', sid)
                 logger.exception(e)
